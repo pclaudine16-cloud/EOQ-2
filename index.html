@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+<meta charset="UTF-8">
+<title>Dashboard EOQ</title>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+
+body{
+font-family:Arial;
+background:#f4f6f7;
+margin:30px;
+}
+
+h1{
+color:#1b7b6f;
+}
+
+.container{
+display:grid;
+grid-template-columns:1fr 1fr 1fr;
+gap:20px;
+}
+
+.card{
+background:white;
+border-radius:8px;
+box-shadow:0 3px 8px rgba(0,0,0,0.15);
+}
+
+.card h2{
+background:#1b7b6f;
+color:white;
+padding:10px;
+margin:0;
+}
+
+table{
+width:100%;
+border-collapse:collapse;
+}
+
+td{
+padding:8px;
+border-bottom:1px solid #eee;
+}
+
+input{
+width:120px;
+text-align:right;
+}
+
+.value{
+font-weight:bold;
+text-align:right;
+}
+
+.chartBox{
+margin-top:30px;
+background:white;
+padding:20px;
+border-radius:8px;
+box-shadow:0 3px 8px rgba(0,0,0,0.15);
+}
+
+.footer{
+margin-top:10px;
+font-size:12px;
+color:#777;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<h1>Dashboard EOQ</h1>
+
+Version Build : <input id="build" value="1.0.0">
+
+<div class="container">
+
+<div class="card">
+
+<h2>Paramètres EOQ</h2>
+
+<table>
+
+<tr>
+<td>Demande annuelle (D)</td>
+<td><input id="demand" value="10000"></td>
+</tr>
+
+<tr>
+<td>Coût commande (S)</td>
+<td><input id="orderCost" value="50"></td>
+</tr>
+
+<tr>
+<td>Coût possession (H)</td>
+<td><input id="holdingCost" value="2"></td>
+</tr>
+
+<tr>
+<td>Lead time (jours)</td>
+<td><input id="leadTime" value="10"></td>
+</tr>
+
+<tr>
+<td>Stock sécurité</td>
+<td><input id="safetyStock" value="100"></td>
+</tr>
+
+</table>
+
+</div>
+
+
+<div class="card">
+
+<h2>Indicateurs</h2>
+
+<table>
+
+<tr>
+<td>EOQ optimal</td>
+<td class="value" id="eoq"></td>
+</tr>
+
+<tr>
+<td>Commandes/an</td>
+<td class="value" id="orders"></td>
+</tr>
+
+<tr>
+<td>Cycle (jours)</td>
+<td class="value" id="cycle"></td>
+</tr>
+
+<tr>
+<td>Point commande</td>
+<td class="value" id="rop"></td>
+</tr>
+
+<tr>
+<td>Coût total annuel</td>
+<td class="value" id="totalCost"></td>
+</tr>
+
+</table>
+
+</div>
+
+
+<div class="card">
+
+<h2>Pareto dynamique</h2>
+
+<table id="paretoTable">
+
+<tr>
+<td>Article</td>
+<td>Valeur</td>
+</tr>
+
+</table>
+
+<button onclick="addArticle()">Ajouter article</button>
+
+</div>
+
+</div>
+
+
+<div class="chartBox">
+
+<h2>Graphique coût EOQ</h2>
+
+<canvas id="costChart"></canvas>
+
+</div>
+
+
+<div class="chartBox">
+
+<h2>Simulation du stock dans le temps</h2>
+
+<canvas id="stockChart"></canvas>
+
+</div>
+
+
+<script>
+
+let costChart
+let stockChart
+
+
+function calculate(){
+
+let D=parseFloat(demand.value)
+let S=parseFloat(orderCost.value)
+let H=parseFloat(holdingCost.value)
+let L=parseFloat(leadTime.value)
+let SS=parseFloat(safetyStock.value)
+
+let EOQ=Math.sqrt((2*D*S)/H)
+
+let orders=D/EOQ
+let cycle=365/orders
+
+let daily=D/365
+
+let ROP=(daily*L)+SS
+
+let orderingCost=(D/EOQ)*S
+let holdingCostTotal=(EOQ/2)*H
+let totalCost=orderingCost+holdingCostTotal
+
+eoq.innerHTML=EOQ.toFixed(2)
+orders.innerHTML=orders.toFixed(2)
+cycle.innerHTML=cycle.toFixed(2)
+rop.innerHTML=ROP.toFixed(2)
+totalCost.innerHTML="$"+totalCost.toFixed(0)
+
+updateCostChart(D,S,H)
+simulateStock(EOQ,daily)
+
+}
+
+
+function updateCostChart(D,S,H){
+
+let data=[]
+
+for(let q=50;q<2000;q+=50){
+
+let cost=(D/q)*S+(q/2)*H
+
+data.push({q,cost})
+
+}
+
+let labels=data.map(d=>d.q)
+let values=data.map(d=>d.cost)
+
+if(costChart) costChart.destroy()
+
+costChart=new Chart(costChartCanvas,{
+type:'line',
+data:{
+labels:labels,
+datasets:[{
+label:'Coût total',
+data:values
+}]
+}
+})
+
+}
+
+
+
+function simulateStock(EOQ,daily){
+
+let stock=[]
+let labels=[]
+let level=EOQ
+
+for(let i=0;i<120;i++){
+
+level-=daily
+
+if(level<=0) level=EOQ
+
+stock.push(level)
+labels.push(i)
+
+}
+
+if(stockChart) stockChart.destroy()
+
+stockChart=new Chart(stockChartCanvas,{
+type:'line',
+data:{
+labels:labels,
+datasets:[{
+label:'Stock',
+data:stock
+}]
+}
+})
+
+}
+
+
+
+function addArticle(){
+
+let table=document.getElementById("paretoTable")
+
+let row=table.insertRow()
+
+row.insertCell(0).innerHTML="Article "+(table.rows.length-1)
+
+let input=document.createElement("input")
+
+input.value=Math.floor(Math.random()*1000)
+
+row.insertCell(1).appendChild(input)
+
+}
+
+
+
+document.querySelectorAll("input").forEach(el=>{
+
+el.addEventListener("input",calculate)
+
+})
+
+calculate()
+
+</script>
+
+<div class="footer">
+
+EOQ Inventory Tool – Compatible GitHub Pages
+
+</div>
+
+</body>
+
+</html>
